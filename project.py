@@ -7,7 +7,7 @@ from database_setup import Base, Restaurant, MenuItem
 
 # Creating new session token
 from flask import session as login_session
-import radom, string
+import random, string
 
 #Connect to Database and create database session
 engine = create_engine('sqlite:///restaurantmenu.db')
@@ -22,7 +22,8 @@ session = DBSession()
 def showLogin():
     state = ''.join(random.choice(string.ascii_uppercase + string.digits) for x in xrange(32))
     login_session['state'] = state
-    return "The current sessio state is %s"%login_session['state']
+    # Render login template
+    return render_template('login.html')
 
 #JSON APIs to view Restaurant Information
 @app.route('/restaurant/<int:restaurant_id>/menu/JSON')
