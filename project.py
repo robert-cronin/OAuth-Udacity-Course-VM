@@ -9,6 +9,17 @@ from database_setup import Base, Restaurant, MenuItem
 from flask import session as login_session
 import random, string
 
+# Import modules for callback method for GConnect redirect
+from oauth2client.client import flow_from_clientsecrets
+from oauth2client.client import FlowExchangeError
+import httplib2
+import json
+from flask import make_response
+import requests
+
+# Declare client ID from client_secrets.JSON file downloaded from google+ credentials site
+CLIENT_ID = json.loads(open('client_secrets.json', 'r').read())['web']['client_id']
+
 #Connect to Database and create database session
 engine = create_engine('sqlite:///restaurantmenu.db')
 Base.metadata.bind = engine
@@ -24,6 +35,48 @@ def showLogin():
     login_session['state'] = state
     # Render login template
     return render_template('login.html')
+
+@app.route('/gconnect', methods=['POST'])
+def gconnect():
+    if request.args.get('state') != login_session['state']:
+        response = make_response(json.dumps('Invalid state parameter', 401))
+        response.headers['Content-Type'] = 'application/json'
+        return response
+    code = request.database
+    try:
+        # Upgrade auth code into credentials object
+        oauth_flow = flow_from_clientsecrets('client_secrets.json', scope='')
+        oauth_flow.redirect_uri = 'postmessage'
+        credentials = oauth_flow.step2_exchange(code)
+    except FlowExchangeError:
+        response = make_response(json.dumps('Failed to upgrade the authorization code.'), 401)
+        response.headers['Content-Type'] = 'application/json'
+        return response
+
+    # Check that the access token is valid:
+    access_token = credentials.access_token
+    url = ('http://www.googleapis.com/oauth2/v1/tokeninfo?access_token=%s'%access_token)
+    h = httplib2.Http()
+    result = json.loads(h.request(url, 'GET')[1])
+
+    # If any error with access token info, abort:
+    if result.get('error') is not None:
+        response = make_response(json.dumps(result.get('error')), 50)
+        response.headers['Content-Type'] = 'application/json'
+
+    # Verify that access token matches intended user:
+    gplus_id = credentials.id_token['sub']
+    if result['user_id'] != gplus_id:
+        response = make_response(json.dumps("Token's user ID doesn't match given user ID.") 401)
+        response.headers['Content-Type'] = 'application/json'
+        return response
+
+    # Check to see if user is already logged in:
+    stored_credentials = login_session.get('credentials')
+    stored_gplus_id = login_session.get('gplus_id')
+    if stored_credentials is not None and gplus_id == stored_gplus_id:
+        response = make_response(json.dumps('Current user is already logged in.'), 200)
+        response.headers['Content-Type'] = 'application/json'
 
 #JSON APIs to view Restaurant Information
 @app.route('/restaurant/<int:restaurant_id>/menu/JSON')
