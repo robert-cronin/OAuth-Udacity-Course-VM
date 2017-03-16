@@ -154,6 +154,9 @@ def getUserID(email):
     except:
         return None
 
+def check_owner_restaurant(restaurant):
+    return getUserID(login_session['email']) == restaurant.user_id
+
 
 # DISCONNECT - Revoke a current user's token and reset their login_session
 @app.route('/gdisconnect')
@@ -215,7 +218,10 @@ def restaurantsJSON():
 @app.route('/restaurant/')
 def showRestaurants():
     restaurants = session.query(Restaurant).order_by(asc(Restaurant.name))
-    return render_template('restaurants.html', restaurants=restaurants)
+    if 'username' not in login_session:
+        return render_template('publicrestaurants.html', restaurants=restaurants)
+    else:
+        return render_template('restaurants.html', restaurants=restaurants)
 
 # Create a new restaurant
 
@@ -226,8 +232,7 @@ def newRestaurant():
         return redirect('/login')
     if request.method == 'POST':
         newRestaurant = Restaurant(
-            name=request.form['name'], user_id=login_session['user_id'],
-            user_id=login_session['user_id'])
+            name=request.form['name'], user_id=login_session['user_id'])
         session.add(newRestaurant)
         flash('New Restaurant %s Successfully Created' % newRestaurant.name)
         session.commit()
@@ -277,7 +282,11 @@ def showMenu(restaurant_id):
     restaurant = session.query(Restaurant).filter_by(id=restaurant_id).one()
     items = session.query(MenuItem).filter_by(
         restaurant_id=restaurant_id).all()
-    return render_template('menu.html', items=items, restaurant=restaurant)
+    creator = getUserInfo(restaurant.user_id)
+    if check_owner_restaurant(restaurant):
+        return render_template('menu.html', items=items, restaurant=restaurant)
+    else:
+        return render_template('publicmenu.html', creator=creator, items=items, restaurant=restaurant)
 
 
 # Create a new menu item
@@ -336,24 +345,6 @@ def deleteMenuItem(restaurant_id, menu_id):
         return redirect(url_for('showMenu', restaurant_id=restaurant_id))
     else:
         return render_template('deleteMenuItem.html', item=itemToDelete)
-
-def getUserID(email):
-    try:
-        user = session.query(User).filter_by(email = email).one()
-        return user.id
-    except:
-        return None
-
-def getUserInfo(user_id):
-    user = session.query(User).filter_by(id = user_id).one()
-    return user
-
-def createUser(login_session):
-    newUser = User(name = login_session['username'], email = login_session['email'], picture = login_session['picture'])
-    session.add(newUser)
-    session.commit()
-    user = session.query(User).filter_by(email = login_session['email']).one()
-    return user.id
 
 if __name__ == '__main__':
   app.secret_key = 'super_secret_key'
